@@ -1,0 +1,155 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>RAVEL RACING - Tilt To Drive</title>
+<meta name="theme-color" content="#e50914">
+<style>
+*{margin:0;padding:0;box-sizing:border-box;font-family:Arial;user-select:none;-webkit-user-select:none}
+body{background:#111;color:white;overflow:hidden;height:100vh;width:100vw}
+#portraitMsg{position:fixed;inset:0;background:#111;z-index:100;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:20px}
+#portraitMsg h1{font-size:50px;margin-bottom:10px}
+#gameWrap{width:100vw;height:100vh;display:flex;flex-direction:column}
+header{background:#ffcc00;color:black;padding:6px 12px;display:flex;justify-content:space-between;align-items:center;font-weight:bold;font-size:14px}
+#roadWrap{flex:1;position:relative;overflow:hidden;background:#2d6a2e}
+canvas{width:100%;height:100%;display:block}
+#hud{position:absolute;top:8px;left:10px;right:10px;display:flex;justify-content:space-between;font-weight:bold;text-shadow:1px 1px 3px black;font-size:15px}
+#centerMsg{position:absolute;top:45%;left:50%;transform:translate(-50%,-50%);background:rgba(0,0,0,.85);padding:15px 20px;border-radius:15px;text-align:center;z-index:10;max-width:90%}
+.controls{position:absolute;bottom:10px;left:0;right:0;display:flex;justify-content:space-between;padding:0 15px;align-items:flex-end}
+.pedal{width:85px;height:85px;border-radius:50%;border:none;font-size:14px;font-weight:bold;color:white}
+#gas{background:#25D366;font-size:18px;width:100px;height:100px}
+#brake{background:#e50914}
+#steerInfo{background:rgba(255,255,255,.15);padding:8px 12px;border-radius:20px;font-size:12px;text-align:center}
+.startBtn{background:#ffcc00;color:black;border:none;padding:12px 25px;border-radius:25px;font-weight:bold;font-size:16px;margin-top:10px}
+</style>
+</head>
+<body>
+
+<!-- SHOW IF PHONE IS UPRIGHT -->
+<div id="portraitMsg">
+<h1>🔄</h1>
+<h2>TURN YOUR PHONE!</h2>
+<p style="margin:12px 0;color:#aaa">Turn your phone sideways<br>to play RAVEL RACING</p>
+<div style="font-size:60px">📱 ➡️ 📱</div>
+<p style="margin-top:15px;font-size:13px;color:#ffcc00">LANDSCAPE MODE ONLY</p>
+</div>
+
+<div id="gameWrap">
+<header><span>🏁 RAVEL RACING</span><span>🚗 Kumasi GP</span><span id="speedTop">0 km/h</span></header>
+
+<div id="roadWrap">
+<canvas id="game" width="900" height="450"></canvas>
+<div id="hud">
+<span>💰 <span id="score">0</span></span>
+<span>🏆 Best: <span id="best">0</span></span>
+<span>⛽ <span id="fuel">100</span>%</span>
+<span>🏁 Lap: <span id="lap">1</span>/3</span>
+</div>
+<div id="centerMsg">
+<h2>🏁 RAVEL RACING</h2>
+<p style="margin:8px 0;font-size:13px">Tilt phone LEFT / RIGHT to steer<br>Hold GAS to go!</p>
+<button class="startBtn" onclick="startGame()">▶️ START RACE</button>
+<p style="font-size:11px;color:#aaa;margin-top:8px">iPhone: Tap START then tap ALLOW if it asks</p>
+</div>
+<div class="controls">
+<button class="pedal" id="brake">🛑<br>BRAKE</button>
+<div id="steerInfo">📱 TILT PHONE<br>⬅️ STEER ➡️<br><span id="tiltVal">Tilt: 0</span></div>
+<button class="pedal" id="gas">⛽<br>GAS</button>
+</div>
+</div>
+</div>
+
+<script>
+let canvas=document.getElementById('game'), ctx=canvas.getContext('2d');
+let car={x:450,y:340,w:44,h:70,speed:0};
+let tilt=0, gasHeld=false, brakeHeld=false;
+let score=0, fuel=100, lap=1, gameOn=false, distance=0;
+let traffic=[], coins=[], roadOffset=0;
+let best=localStorage.getItem('ravel_race_best')||0;
+document.getElementById('best').innerText=best;
+
+// Check orientation
+function checkOrient(){
+  if(window.innerHeight > window.innerWidth){
+    document.getElementById('portraitMsg').style.display='flex';
+  } else {
+    document.getElementById('portraitMsg').style.display='none';
+  }
+}
+window.addEventListener('resize',checkOrient); checkOrient();
+
+// Tilt controls - Android + iPhone
+function handleTilt(e){
+  if(e.gamma!==null){ tilt=e.gamma; document.getElementById('tiltVal').innerText='Tilt: '+Math.round(tilt); }
+}
+window.addEventListener('deviceorientation',handleTilt);
+
+// iPhone needs permission
+async function askTilt(){
+  if(typeof DeviceOrientationEvent!=='undefined' && typeof DeviceOrientationEvent.requestPermission==='function'){
+    try{ await DeviceOrientationEvent.requestPermission(); }catch(e){}
+  }
+}
+
+function startGame(){
+  askTilt();
+  score=0; fuel=100; lap=1; distance=0; car.x=450; car.speed=0;
+  traffic=[]; coins=[];
+  for(let i=0;i<5;i++) traffic.push({x:200+Math.random()*500,y:-Math.random()*800,speed:2+Math.random()*2});
+  for(let i=0;i<6;i++) coins.push({x:200+Math.random()*500,y:-Math.random()*1000});
+  gameOn=true;
+  document.getElementById('centerMsg').style.display='none';
+}
+
+// Touch pedals
+let gasBtn=document.getElementById('gas'), brakeBtn=document.getElementById('brake');
+function bindHold(btn, on, off){
+  btn.addEventListener('touchstart',e=>{e.preventDefault(); on();});
+  btn.addEventListener('touchend',e=>{e.preventDefault(); off();});
+  btn.addEventListener('mousedown',on); btn.addEventListener('mouseup',off);
+}
+bindHold(gasBtn, ()=>gasHeld=true, ()=>gasHeld=false);
+bindHold(brakeBtn, ()=>brakeHeld=true, ()=>brakeHeld=false);
+
+// Keyboard also works on computer
+let keys={};
+document.addEventListener('keydown',e=>keys[e.key]=true);
+document.addEventListener('keyup',e=>keys[e.key]=false);
+
+function loop(){
+  // Road
+  ctx.fillStyle="#2d6a2e"; ctx.fillRect(0,0,900,450);
+  // Road
+  ctx.fillStyle="#333"; ctx.fillRect(150,0,600,450);
+  // Side lines
+  ctx.fillStyle="#ffcc00"; ctx.fillRect(150,0,8,450); ctx.fillRect(742,0,8,450);
+  // Center dashed lines moving
+  ctx.fillStyle="white";
+  roadOffset+=car.speed;
+  for(let y=-40+ (roadOffset%80); y<450; y+=80){
+    ctx.fillRect(295,y,6,35); ctx.fillRect(445,y,6,35); ctx.fillRect(595,y,6,35);
+  }
+  // Side buildings
+  ctx.fillStyle="#ffcc00"; ctx.fillRect(20, (roadOffset*0.5)%500-100, 100, 60);
+  ctx.fillStyle="#00bfff"; ctx.fillRect(780, (roadOffset*0.5+200)%500-100, 100, 60);
+  ctx.fillStyle="black"; ctx.font="bold 11px Arial"; ctx.fillText("KEJETIA",35, (roadOffset*0.5)%500-65);
+  ctx.fillText("ADUM",810, (roadOffset*0.5+200)%500-65);
+
+  // Coins
+  coins.forEach(c=>{
+    c.y+=car.speed+2; if(c.y>470){c.y=-Math.random()*800; c.x=200+Math.random()*500;}
+    ctx.fillStyle="#ffcc00"; ctx.beginPath(); ctx.arc(c.x,c.y,14,0,Math.PI*2); ctx.fill();
+    ctx.fillStyle="black"; ctx.font="bold 12px Arial"; ctx.fillText("₵",c.x-4,c.y+4);
+    if(gameOn && Math.abs(car.x-c.x)<35 && Math.abs(car.y-c.y)<40){ score+=10; fuel=Math.min(100,fuel+5); c.y=-Math.random()*800; document.getElementById('score').innerText=score; }
+  });
+
+  // Traffic
+  traffic.forEach(t=>{
+    t.y+=car.speed - t.speed + 3; if(t.y>480){t.y=-Math.random()*600; t.x=200+Math.random()*500;}
+    ctx.save(); ctx.translate(t.x,t.y); ctx.fillStyle="#e50914"; ctx.fillRect(-22,-35,44,70); ctx.fillStyle="#111"; ctx.fillRect(-15,-20,30,28); ctx.restore();
+    if(gameOn && Math.abs(car.x-t.x)<38 && Math.abs(car.y-t.y)<60){
+      score=Math.max(0,score-20); fuel-=10; t.y=-Math.random()*600;
+      document.getElementById('centerMsg').style.display='block';
+      document.getElementById('centerMsg').innerHTML='<h2>💥 CRASH!</h2><p>-20 points!</p>';
+      setTimeout(()=>{if(gameOn) document.getElementById('centerMsg').style.display='
